@@ -50,24 +50,11 @@ jobs:
       - name: Check blog post publish dates
         # Scan all blog posts for future publish dates
         id: check-dates
-        continue-on-error: true
-        run: |
-          OUTPUT=$(node apps/site/scripts/check-blog-dates/index.mjs 2>&1)
-          EXIT_CODE=$?
-
-          if [ $EXIT_CODE -ne 0 ]; then
-            # Format JSON output as markdown table for PR comment
-            echo "| Post | Title | Publish Date | Days in Future |" > /tmp/table.md
-            echo "|------|-------|--------------|----------------|" >> /tmp/table.md
-            echo "$OUTPUT" | jq -r '.[] | "| \(.slug) | \(.title) | \(.date) | \(.daysInFuture) |"' >> /tmp/table.md
-
-            echo "FUTURE_POSTS<<EOF" >> $GITHUB_OUTPUT
-            cat /tmp/table.md >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            echo "HAS_FUTURE_POSTS=true" >> $GITHUB_OUTPUT
-          else
-            echo "HAS_FUTURE_POSTS=false" >> $GITHUB_OUTPUT
-          fi
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const { checkAndFormatBlogDates } = await import('${{github.workspace}}/apps/site/scripts/check-blog-dates/check-and-format.mjs')
+            await checkAndFormatBlogDates({core})
 
       - name: Request changes on PR
         # Request changes to block merge until dates are verified
