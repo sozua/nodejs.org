@@ -2,20 +2,6 @@ export async function createReviewForFutureDates({ github, context, core }) {
   const futurePostsTable = process.env.FUTURE_POSTS;
   const futurePostsJson = process.env.FUTURE_POSTS_JSON;
 
-  if (!futurePostsTable || !futurePostsJson) {
-    core.info('No future posts found, skipping');
-    return;
-  }
-
-  const futurePosts = JSON.parse(futurePostsJson);
-
-  const body = `<!-- future-dates-check -->
-**Future publish dates found:**
-
-${futurePostsTable}
-
-**Posts will be published immediately when merged. Verify dates are correct.**`;
-
   const { data: comments } = await github.rest.issues.listComments({
     owner: context.repo.owner,
     repo: context.repo.repo,
@@ -28,22 +14,49 @@ ${futurePostsTable}
       comment.body.includes('<!-- future-dates-check -->')
   );
 
-  if (existingComment) {
-    await github.rest.issues.updateComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      comment_id: existingComment.id,
-      body,
-    });
-    core.info('Updated existing comment');
+  // If no future posts found, delete existing comment if it exists
+  if (!futurePostsTable || !futurePostsJson) {
+    if (existingComment) {
+      try {
+        await github.rest.issues.deleteComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          comment_id: existingComment.id,
+        });
+        core.info('Deleted main comment (no future posts found)');
+      } catch (error) {
+        core.warning(`Failed to delete main comment: ${error.message}`);
+      }
+    } else {
+      core.info('No future posts found, skipping');
+    }
+    // Continue to clean up inline comments even if no future posts
   } else {
-    await github.rest.issues.createComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: context.issue.number,
-      body,
-    });
-    core.info('Created new comment');
+    // Future posts exist, create or update main comment
+    const body = `<!-- future-dates-check -->
+**Future publish dates found:**
+
+${futurePostsTable}
+
+**Posts will be published immediately when merged. Verify dates are correct.**`;
+
+    if (existingComment) {
+      await github.rest.issues.updateComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        comment_id: existingComment.id,
+        body,
+      });
+      core.info('Updated existing comment');
+    } else {
+      await github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: context.issue.number,
+        body,
+      });
+      core.info('Created new comment');
+    }
   }
 
   const { data: files } = await github.rest.pulls.listFiles({
@@ -59,6 +72,44 @@ ${futurePostsTable}
       pull_number: context.issue.number,
     }
   );
+
+  // Parse future posts if they exist
+  const futurePosts = futurePostsJson ? JSON.parse(futurePostsJson) : [];
+
+  // Track which file paths are currently flagged with future dates
+  const currentFuturePostPaths = new Set(
+    futurePosts.map(post => `apps/site/pages/en${post.slug}.md`)
+  );
+
+  // Find and delete comments for files that are no longer flagged or have been deleted
+  const botComments = existingComments.filter(
+    comment =>
+      comment.user.login === 'github-actions[bot]' &&
+      comment.body.includes('Future publish date:')
+  );
+
+  for (const comment of botComments) {
+    const shouldDelete =
+      !currentFuturePostPaths.has(comment.path) ||
+      files.some(f => f.filename === comment.path && f.status === 'removed');
+
+    if (shouldDelete) {
+      try {
+        await github.rest.pulls.deleteReviewComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          comment_id: comment.id,
+        });
+        core.info(
+          `Deleted comment on ${comment.path} (file deleted or date fixed)`
+        );
+      } catch (error) {
+        core.warning(
+          `Failed to delete comment on ${comment.path}: ${error.message}`
+        );
+      }
+    }
+  }
 
   for (const post of futurePosts) {
     const filePath = `apps/site/pages/en${post.slug}.md`;
