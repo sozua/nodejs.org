@@ -13,33 +13,37 @@ ${futurePostsTable}
 
 **Posts will be published immediately when merged. Verify dates are correct.**`;
 
-  const { data: comments } = await github.rest.issues.listComments({
+  const { data: reviews } = await github.rest.pulls.listReviews({
     owner: context.repo.owner,
     repo: context.repo.repo,
-    issue_number: context.issue.number,
+    pull_number: context.issue.number,
   });
 
-  const existingComment = comments.find(
-    comment =>
-      comment.user.login === 'github-actions[bot]' &&
-      comment.body.includes('<!-- future-dates-check -->')
+  const existingReviews = reviews.filter(
+    review =>
+      review.user.login === 'github-actions[bot]' &&
+      review.body.includes('<!-- future-dates-check -->') &&
+      review.state !== 'DISMISSED'
   );
 
-  if (existingComment) {
-    await github.rest.issues.updateComment({
+  for (const review of existingReviews) {
+    await github.rest.pulls.dismissReview({
       owner: context.repo.owner,
       repo: context.repo.repo,
-      comment_id: existingComment.id,
-      body,
+      pull_number: context.issue.number,
+      review_id: review.id,
+      message: 'Outdated - new review created',
     });
-    core.info('Updated existing comment');
-  } else {
-    await github.rest.issues.createComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: context.issue.number,
-      body,
-    });
-    core.info('Created new comment');
+    core.info(`Dismissed review ${review.id}`);
   }
+
+  await github.rest.pulls.createReview({
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    pull_number: context.issue.number,
+    event: 'COMMENT',
+    body,
+  });
+
+  core.info('Created new review');
 }
