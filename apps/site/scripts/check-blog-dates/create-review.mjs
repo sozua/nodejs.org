@@ -13,33 +13,7 @@ export async function createReviewForFutureDates({ github, context, core }) {
 
 ${futurePostsTable}
 
-**Posts will be published immediately when merged. Verify dates are correct.**
-
-Once verified, dismiss this review to allow merging.`;
-
-  const { data: reviews } = await github.rest.pulls.listReviews({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    pull_number: context.issue.number,
-  });
-
-  const existingReview = reviews.find(
-    review =>
-      review.user.login === 'github-actions[bot]' &&
-      review.state === 'CHANGES_REQUESTED' &&
-      review.body.includes('Future publish dates found')
-  );
-
-  if (existingReview) {
-    await github.rest.pulls.dismissReview({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      pull_number: context.issue.number,
-      review_id: existingReview.id,
-      message: 'Dismissed to create updated review',
-    });
-    core.info('Dismissed old review');
-  }
+**Posts will be published immediately when merged. Verify dates are correct.**`;
 
   const comments = futurePosts.map(post => {
     const filePath = `apps/site/pages/en${post.slug}.md`;
@@ -54,10 +28,10 @@ Once verified, dismiss this review to allow merging.`;
     owner: context.repo.owner,
     repo: context.repo.repo,
     pull_number: context.issue.number,
-    event: 'REQUEST_CHANGES',
+    event: 'COMMENT',
     body,
     comments,
   });
 
-  core.info('Created review requesting changes with file comments');
+  core.info('Created review with file comments');
 }
