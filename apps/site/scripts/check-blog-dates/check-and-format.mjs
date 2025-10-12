@@ -1,6 +1,6 @@
-export async function checkAndFormatBlogDates({ core }) {
-  const { checkBlogDates } = await import('./index.mjs');
+import { checkBlogDates } from './index.mjs';
 
+export async function checkAndFormatBlogDates({ core }) {
   const { futurePosts, hasFuturePosts } = await checkBlogDates();
 
   if (hasFuturePosts) {
