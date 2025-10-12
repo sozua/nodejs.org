@@ -29,6 +29,8 @@ export async function createReviewForFutureDates({ github, context, core }) {
     const filePath = `apps/site/pages/en${post.slug}.md`;
     const file = files.find(f => f.filename === filePath);
 
+    core.info(`Processing ${filePath}...`);
+
     const newBody = `**Future publish date:** ${post.date}\n\nThis post is scheduled ${post.daysInFuture} days in the future. Verify this date is correct.`;
 
     const existingComment = existingComments.find(
@@ -73,13 +75,16 @@ export async function createReviewForFutureDates({ github, context, core }) {
             position,
             body: newBody,
           });
+          core.info(`Added ${filePath} to review at position ${position}`);
           break;
         }
       }
+
+      if (!foundDateLine) {
+        core.warning(`Could not find 'date:' line in ${filePath} patch`);
+      }
     } else {
-      core.info(
-        `File ${filePath} not in current diff, listed in main comment only`
-      );
+      core.warning(`File ${filePath} not found in PR diff`);
     }
   }
 
