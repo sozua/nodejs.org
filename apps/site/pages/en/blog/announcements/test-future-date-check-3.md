@@ -1,5 +1,5 @@
 ---
-date: '2025-12-31T12:00:00.000Z'
+date: '2025-10-29T12:00:00.000Z'
 category: announcements
 title: 'TEST 2: Future Date Check Workflow'
 layout: blog-post
