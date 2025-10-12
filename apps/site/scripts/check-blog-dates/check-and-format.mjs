@@ -1,7 +1,12 @@
 import { checkBlogDates } from './index.mjs';
 
 export async function checkAndFormatBlogDates({ core }) {
+  const originalCwd = process.cwd();
+  process.chdir(`${originalCwd}/apps/site`);
+
   const { futurePosts, hasFuturePosts } = await checkBlogDates();
+
+  process.chdir(originalCwd);
 
   if (hasFuturePosts) {
     const header = [
