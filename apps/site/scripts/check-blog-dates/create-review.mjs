@@ -52,9 +52,29 @@ ${futurePostsTable}
     pull_number: context.issue.number,
   });
 
+  const { data: existingComments } = await github.rest.pulls.listReviewComments(
+    {
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: context.issue.number,
+    }
+  );
+
   for (const post of futurePosts) {
     const filePath = `apps/site/pages/en${post.slug}.md`;
     const file = files.find(f => f.filename === filePath);
+
+    const alreadyCommented = existingComments.some(
+      comment =>
+        comment.path === filePath &&
+        comment.user.login === 'github-actions[bot]' &&
+        comment.body.includes('Future publish date:')
+    );
+
+    if (alreadyCommented) {
+      core.info(`Already commented on ${filePath}, skipping`);
+      continue;
+    }
 
     if (file && file.patch) {
       const lines = file.patch.split('\n');
@@ -82,6 +102,10 @@ ${futurePostsTable}
           }
         }
       }
+    } else {
+      core.info(
+        `File ${filePath} not in current diff, listed in main comment only`
+      );
     }
   }
 }
