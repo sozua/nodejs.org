@@ -15,5 +15,3 @@ This post has a future publish date and should trigger the workflow to:
 3. Block the PR from being merged
 
 Once the workflow is verified, this post should be deleted.
-
-test
