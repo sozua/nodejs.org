@@ -60,6 +60,9 @@ ${futurePostsTable}
     }
   );
 
+  // Collect all new comments to be created in a single review
+  const newComments = [];
+
   for (const post of futurePosts) {
     const filePath = `apps/site/pages/en${post.slug}.md`;
     const file = files.find(f => f.filename === filePath);
@@ -103,27 +106,37 @@ ${futurePostsTable}
         position++;
         if (line.includes('date:') && !foundDateLine) {
           foundDateLine = true;
-          try {
-            await github.rest.pulls.createReviewComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-              body: newBody,
-              commit_id: context.payload.pull_request.head.sha,
-              path: filePath,
-              position,
-            });
-            core.info(`Added comment on ${filePath}`);
-            break;
-          } catch (error) {
-            core.warning(`Failed to comment on ${filePath}: ${error.message}`);
-          }
+          newComments.push({
+            path: filePath,
+            position,
+            body: newBody,
+          });
+          break;
         }
       }
     } else {
       core.info(
         `File ${filePath} not in current diff, listed in main comment only`
       );
+    }
+  }
+
+  // Create a single review with all new comments
+  if (newComments.length > 0) {
+    try {
+      await github.rest.pulls.createReview({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: context.issue.number,
+        commit_id: context.payload.pull_request.head.sha,
+        event: 'COMMENT',
+        comments: newComments,
+      });
+      core.info(
+        `Created review with ${newComments.length} comment(s) on future dated files`
+      );
+    } catch (error) {
+      core.warning(`Failed to create review: ${error.message}`);
     }
   }
 }
