@@ -1,10 +1,13 @@
 export async function createReviewForFutureDates({ github, context, core }) {
   const futurePostsTable = process.env.FUTURE_POSTS;
+  const futurePostsJson = process.env.FUTURE_POSTS_JSON;
 
-  if (!futurePostsTable) {
-    core.info('No future posts found, skipping review creation');
+  if (!futurePostsTable || !futurePostsJson) {
+    core.info('No future posts found, skipping');
     return;
   }
+
+  const futurePosts = JSON.parse(futurePostsJson);
 
   const body = `<!-- future-dates-check -->
 **Future publish dates found:**
@@ -13,37 +16,72 @@ ${futurePostsTable}
 
 **Posts will be published immediately when merged. Verify dates are correct.**`;
 
-  const { data: reviews } = await github.rest.pulls.listReviews({
+  const { data: comments } = await github.rest.issues.listComments({
     owner: context.repo.owner,
     repo: context.repo.repo,
-    pull_number: context.issue.number,
+    issue_number: context.issue.number,
   });
 
-  const existingReviews = reviews.filter(
-    review =>
-      review.user.login === 'github-actions[bot]' &&
-      review.body.includes('<!-- future-dates-check -->') &&
-      review.state !== 'DISMISSED'
+  const existingComment = comments.find(
+    comment =>
+      comment.user.login === 'github-actions[bot]' &&
+      comment.body.includes('<!-- future-dates-check -->')
   );
 
-  for (const review of existingReviews) {
-    await github.rest.pulls.dismissReview({
+  if (existingComment) {
+    await github.rest.issues.updateComment({
       owner: context.repo.owner,
       repo: context.repo.repo,
-      pull_number: context.issue.number,
-      review_id: review.id,
-      message: 'Outdated - new review created',
+      comment_id: existingComment.id,
+      body,
     });
-    core.info(`Dismissed review ${review.id}`);
+    core.info('Updated existing comment');
+  } else {
+    await github.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: context.issue.number,
+      body,
+    });
+    core.info('Created new comment');
   }
 
-  await github.rest.pulls.createReview({
+  const { data: files } = await github.rest.pulls.listFiles({
     owner: context.repo.owner,
     repo: context.repo.repo,
     pull_number: context.issue.number,
-    event: 'COMMENT',
-    body,
   });
 
-  core.info('Created new review');
+  for (const post of futurePosts) {
+    const filePath = `apps/site/pages/en${post.slug}.md`;
+    const file = files.find(f => f.filename === filePath);
+
+    if (file && file.patch) {
+      const lines = file.patch.split('\n');
+      let position = 0;
+      let foundDateLine = false;
+
+      for (const line of lines) {
+        position++;
+        if (line.includes('date:') && !foundDateLine) {
+          foundDateLine = true;
+          try {
+            await github.rest.pulls.createReviewComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: `**Future publish date:** ${post.date}\n\nThis post is scheduled ${post.daysInFuture} days in the future. Verify this date is correct.`,
+              commit_id: context.payload.pull_request.head.sha,
+              path: filePath,
+              position,
+            });
+            core.info(`Added comment on ${filePath}`);
+            break;
+          } catch (error) {
+            core.warning(`Failed to comment on ${filePath}: ${error.message}`);
+          }
+        }
+      }
+    }
+  }
 }
