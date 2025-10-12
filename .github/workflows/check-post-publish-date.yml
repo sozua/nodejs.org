@@ -42,10 +42,16 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
 
-      - uses: nodejs/web-team/actions/setup-environment@2c2897a93eb99b4cdca270729100bc0887c758d9
+      - name: Setup Node.js
+        uses: actions/setup-node@1a4442cacd436585916779262731d5b162bc6ec7 # v5.0.0
         with:
-          pnpm: true
-          use-version-file: true
+          node-version-file: '.nvmrc'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Check blog post publish dates
         # Scan all blog posts for future publish dates
