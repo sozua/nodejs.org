@@ -64,15 +64,33 @@ ${futurePostsTable}
     const filePath = `apps/site/pages/en${post.slug}.md`;
     const file = files.find(f => f.filename === filePath);
 
-    const alreadyCommented = existingComments.some(
+    const newBody = `**Future publish date:** ${post.date}\n\nThis post is scheduled ${post.daysInFuture} days in the future. Verify this date is correct.`;
+
+    const existingComment = existingComments.find(
       comment =>
         comment.path === filePath &&
         comment.user.login === 'github-actions[bot]' &&
         comment.body.includes('Future publish date:')
     );
 
-    if (alreadyCommented) {
-      core.info(`Already commented on ${filePath}, skipping`);
+    if (existingComment) {
+      if (existingComment.body !== newBody) {
+        try {
+          await github.rest.pulls.updateReviewComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            comment_id: existingComment.id,
+            body: newBody,
+          });
+          core.info(`Updated comment on ${filePath}`);
+        } catch (error) {
+          core.warning(
+            `Failed to update comment on ${filePath}: ${error.message}`
+          );
+        }
+      } else {
+        core.info(`Comment on ${filePath} already up to date`);
+      }
       continue;
     }
 
@@ -90,7 +108,7 @@ ${futurePostsTable}
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
-              body: `**Future publish date:** ${post.date}\n\nThis post is scheduled ${post.daysInFuture} days in the future. Verify this date is correct.`,
+              body: newBody,
               commit_id: context.payload.pull_request.head.sha,
               path: filePath,
               position,
