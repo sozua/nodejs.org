@@ -10,8 +10,6 @@ name: Check Blog Post Publish Dates
 
 on:
   pull_request_target:
-    branches:
-      - main
     paths:
       - 'apps/site/pages/en/blog/**/*.md'
   merge_group:
