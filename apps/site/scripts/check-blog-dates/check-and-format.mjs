@@ -22,6 +22,7 @@ export async function checkAndFormatBlogDates({ core }) {
 
     core.setOutput('HAS_FUTURE_POSTS', 'true');
     core.setOutput('FUTURE_POSTS', table);
+    core.setOutput('FUTURE_POSTS_JSON', JSON.stringify(futurePosts));
   } else {
     core.setOutput('HAS_FUTURE_POSTS', 'false');
   }
