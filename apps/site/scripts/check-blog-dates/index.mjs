@@ -41,19 +41,13 @@ export async function checkBlogDates(
 /**
  * Checks blog dates and formats the results for GitHub Actions output.
  *
- * Note: This function must be run from the repository root as it changes
- * directory to apps/site to access the blog data generator.
+ * Note: This function must be run from the apps/site directory.
  *
  * @param {Object} params - GitHub Actions utilities
  * @param {Object} params.core - GitHub Actions core utilities for setting outputs
  */
 export async function checkAndFormatBlogDates({ core }) {
-  const originalCwd = process.cwd();
-  process.chdir(`${originalCwd}/apps/site`);
-
   const { futurePosts, hasFuturePosts } = await checkBlogDates();
-
-  process.chdir(originalCwd);
 
   if (hasFuturePosts) {
     core.setOutput('HAS_FUTURE_POSTS', 'true');
