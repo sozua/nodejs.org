@@ -293,6 +293,29 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: [
+          {
+            filename: 'apps/site/pages/en/blog/test.md',
+            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
+          },
+        ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -1037,6 +1060,46 @@ describe('createReviewForFutureDates', () => {
         )
       )
     );
+  });
+
+  it('should handle getCommitFiles error gracefully', async () => {
+    process.env.FUTURE_POSTS_JSON = JSON.stringify([
+      {
+        slug: '/blog/test',
+        title: 'Test Post',
+        date: '2099-01-01T00:00:00.000Z',
+        daysInFuture: 100,
+      },
+    ]);
+
+    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: [
+          {
+            filename: 'apps/site/pages/en/blog/test.md',
+            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
+          },
+        ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.reject(new Error('API Error'))
+    );
+
+    await createReviewForFutureDates({
+      github: mockGithub,
+      context: mockContext,
+      core: mockCore,
+    });
+
+    assert.equal(mockCore.warning.mock.calls.length, 1);
+    assert.ok(
+      mockCore.warning.mock.calls[0].arguments[0].includes(
+        'Failed to get commit files'
+      )
+    );
+    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
   });
 });
 

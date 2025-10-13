@@ -50,15 +50,21 @@ export async function checkBlogDates(
  * @param {Object} params.core - GitHub Actions core utilities for setting outputs
  * @param {Object} params.github - GitHub API client (required for PR filtering)
  * @param {Object} params.context - GitHub Actions context (required for PR filtering)
+ * @param {Function} params.blogDataGenerator - Blog data generator function (for testing)
  */
-export async function checkAndFormatBlogDates({ core, github, context }) {
+export async function checkAndFormatBlogDates({
+  core,
+  github,
+  context,
+  blogDataGenerator = checkBlogDates,
+}) {
   if (!github || !context?.payload?.pull_request) {
     core.info('Not running in a PR context, skipping future date checks');
     core.setOutput('HAS_FUTURE_POSTS', 'false');
     return;
   }
 
-  const { futurePosts: allFuturePosts } = await checkBlogDates();
+  const { futurePosts: allFuturePosts } = await blogDataGenerator();
 
   // Filter to only posts that are in the PR diff
   const { data: files } = await github.rest.pulls.listFiles({
@@ -69,11 +75,9 @@ export async function checkAndFormatBlogDates({ core, github, context }) {
 
   const changedFiles = new Set(files.map(f => f.filename));
 
-  const futurePosts = allFuturePosts.filter(post => {
-    const slug = post.slug.startsWith('/') ? post.slug : `/${post.slug}`;
-    const filePath = `apps/site/pages/en${slug}.md`;
-    return changedFiles.has(filePath);
-  });
+  const futurePosts = allFuturePosts.filter(post =>
+    isPostInChangedFiles(post, changedFiles)
+  );
 
   const hasFuturePosts = futurePosts.length > 0;
 
@@ -83,4 +87,25 @@ export async function checkAndFormatBlogDates({ core, github, context }) {
   } else {
     core.setOutput('HAS_FUTURE_POSTS', 'false');
   }
+}
+
+/**
+ * Builds the file path for a blog post based on its slug
+ * @param {string} slug - The blog post slug
+ * @returns {string} The file path
+ */
+export function buildBlogPostFilePath(slug) {
+  const normalizedSlug = slug.startsWith('/') ? slug : `/${slug}`;
+  return `apps/site/pages/en${normalizedSlug}.md`;
+}
+
+/**
+ * Checks if a blog post is in the changed files
+ * @param {Object} post - The blog post object
+ * @param {Set<string>} changedFiles - Set of changed file paths
+ * @returns {boolean} True if the post is in changed files
+ */
+export function isPostInChangedFiles(post, changedFiles) {
+  const filePath = buildBlogPostFilePath(post.slug);
+  return changedFiles.has(filePath);
 }
