@@ -155,8 +155,9 @@ async function createReview({
  * Process:
  * 1. Parse future posts from environment
  * 2. Fetch PR files and existing comments
- * 3. Update existing comments or prepare new ones
- * 4. Create a single review with all new comments
+ * 3. Filter posts to only those with modified date lines in this PR
+ * 4. Update existing comments or prepare new ones
+ * 5. Create a single review with all new comments
  */
 export async function createReviewForFutureDates({ github, context, core }) {
   // Parse environment - JSON string set by previous step in workflow
@@ -181,9 +182,28 @@ export async function createReviewForFutureDates({ github, context, core }) {
     github.rest.pulls.listReviewComments(requestContext),
   ]);
 
-  // Process each post
+  // Create a set of changed file paths for quick lookup
+  const changedFilePaths = new Set(files.map(f => f.filename));
+
+  // Filter future posts to only include files that are in the PR's changed files
+  const relevantPosts = futurePosts.filter(post => {
+    const slug = post.slug.startsWith('/') ? post.slug : `/${post.slug}`;
+    const filePath = `apps/site/pages/en${slug}.md`;
+    return changedFilePaths.has(filePath);
+  });
+
+  if (relevantPosts.length === 0) {
+    core.info('No future posts in changed files, skipping review creation');
+    return;
+  }
+
+  core.info(
+    `Processing ${relevantPosts.length} future post(s) from ${futurePosts.length} total future posts`
+  );
+
+  // Process each relevant post
   const newComments = [];
-  for (const post of futurePosts) {
+  for (const post of relevantPosts) {
     const comment = await processPost({
       post,
       files,

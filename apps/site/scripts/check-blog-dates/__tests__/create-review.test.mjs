@@ -101,7 +101,7 @@ describe('createReviewForFutureDates', () => {
     assert.ok(createCall.comments[0].body.includes(MOCK_DATE));
   });
 
-  it('should warn when file is not in PR diff', async () => {
+  it('should skip when file is not in PR diff', async () => {
     process.env.FUTURE_POSTS_JSON = JSON.stringify([
       {
         slug: '/blog/test',
@@ -121,10 +121,11 @@ describe('createReviewForFutureDates', () => {
       core: mockCore,
     });
 
-    assert.equal(mockCore.warning.mock.calls.length, 1);
+    // Should skip entirely since no files in changed files list
+    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
     assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes(
-        'not found in PR diff'
+      mockCore.info.mock.calls.some(call =>
+        call.arguments[0].includes('No future posts in changed files')
       )
     );
   });
@@ -156,10 +157,10 @@ describe('createReviewForFutureDates', () => {
       core: mockCore,
     });
 
-    assert.equal(mockCore.info.mock.calls.length, 1);
+    assert.equal(mockCore.info.mock.calls.length, 2); // 1 for processing, 1 for skipping
     assert.ok(
-      mockCore.info.mock.calls[0].arguments[0].includes(
-        'date line not modified'
+      mockCore.info.mock.calls.some(call =>
+        call.arguments[0].includes('date line not modified')
       )
     );
   });
@@ -278,6 +279,17 @@ describe('createReviewForFutureDates', () => {
             path: 'apps/site/pages/en/blog/test.md',
             user: { login: BOT_USER_LOGIN },
             body: `${BOT_PREFIX} OLD_DATE\n\nOld content`,
+          },
+        ],
+      })
+    );
+
+    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: [
+          {
+            filename: 'apps/site/pages/en/blog/test.md',
+            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
           },
         ],
       })
@@ -414,9 +426,11 @@ describe('createReviewForFutureDates', () => {
       'apps/site/pages/en/blog/in-pr.md'
     );
 
-    assert.equal(mockCore.warning.mock.calls.length, 1);
+    // File not in PR is now filtered out before processing, so no warning
     assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes('not-in-pr')
+      mockCore.info.mock.calls.some(call =>
+        call.arguments[0].includes('Processing 1 future post(s) from 2')
+      )
     );
   });
 
@@ -727,6 +741,103 @@ describe('createReviewForFutureDates', () => {
       0
     );
     assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
+  });
+
+  it('should only process files that are in PR changed files', async () => {
+    process.env.FUTURE_POSTS_JSON = JSON.stringify([
+      {
+        slug: '/blog/changed-file',
+        title: 'Changed File',
+        date: '2099-01-01T00:00:00.000Z',
+        daysInFuture: 100,
+      },
+      {
+        slug: '/blog/unchanged-file-1',
+        title: 'Unchanged File 1',
+        date: '2099-02-01T00:00:00.000Z',
+        daysInFuture: 131,
+      },
+      {
+        slug: '/blog/unchanged-file-2',
+        title: 'Unchanged File 2',
+        date: '2099-03-01T00:00:00.000Z',
+        daysInFuture: 159,
+      },
+    ]);
+
+    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: [
+          {
+            filename: 'apps/site/pages/en/blog/changed-file.md',
+            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
+          },
+          {
+            filename: 'apps/site/pages/en/blog/other-file.md',
+            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+content: foo',
+          },
+        ],
+      })
+    );
+
+    await createReviewForFutureDates({
+      github: mockGithub,
+      context: mockContext,
+      core: mockCore,
+    });
+
+    // Should only create comment for the one file that is both in future posts AND in changed files
+    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
+    const createCall =
+      mockGithub.rest.pulls.createReview.mock.calls[0].arguments[0];
+    assert.equal(createCall.comments.length, 1);
+    assert.equal(
+      createCall.comments[0].path,
+      'apps/site/pages/en/blog/changed-file.md'
+    );
+
+    // Verify info message about filtering
+    assert.ok(
+      mockCore.info.mock.calls.some(call =>
+        call.arguments[0].includes('Processing 1 future post(s) from 3')
+      )
+    );
+  });
+
+  it('should skip when no future posts are in changed files', async () => {
+    process.env.FUTURE_POSTS_JSON = JSON.stringify([
+      {
+        slug: '/blog/unchanged-file',
+        title: 'Unchanged File',
+        date: '2099-01-01T00:00:00.000Z',
+        daysInFuture: 100,
+      },
+    ]);
+
+    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: [
+          {
+            filename: 'apps/site/pages/en/blog/other-file.md',
+            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+content: foo',
+          },
+        ],
+      })
+    );
+
+    await createReviewForFutureDates({
+      github: mockGithub,
+      context: mockContext,
+      core: mockCore,
+    });
+
+    assert.equal(mockGithub.rest.pulls.listFiles.mock.calls.length, 1);
+    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
+    assert.ok(
+      mockCore.info.mock.calls.some(call =>
+        call.arguments[0].includes('No future posts in changed files')
+      )
+    );
   });
 });
 
