@@ -22,6 +22,9 @@ describe('createReviewForFutureDates', () => {
           listReviewComments: t.mock.fn(() => Promise.resolve({ data: [] })),
           updateReviewComment: t.mock.fn(),
         },
+        repos: {
+          getCommit: t.mock.fn(() => Promise.resolve({ data: { files: [] } })),
+        },
       },
     };
 
@@ -81,6 +84,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -115,6 +130,12 @@ describe('createReviewForFutureDates', () => {
       Promise.resolve({ data: [] })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: { files: [] },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -125,7 +146,9 @@ describe('createReviewForFutureDates', () => {
     assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
     assert.ok(
       mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes('No future posts in changed files')
+        call.arguments[0].includes(
+          'No future posts in files changed by this commit'
+        )
       )
     );
   });
@@ -151,13 +174,25 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
       core: mockCore,
     });
 
-    assert.equal(mockCore.info.mock.calls.length, 2); // 1 for processing, 1 for skipping
+    assert.equal(mockCore.info.mock.calls.length, 4); // commit info, found files, processing, skipping
     assert.ok(
       mockCore.info.mock.calls.some(call =>
         call.arguments[0].includes('date line not modified')
@@ -199,6 +234,18 @@ describe('createReviewForFutureDates', () => {
             patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
           },
         ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
       })
     );
 
@@ -295,6 +342,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     mockGithub.rest.pulls.updateReviewComment.mock.mockImplementation(() =>
       Promise.reject(new Error('API Error'))
     );
@@ -356,6 +415,24 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/post-1.md',
+            },
+            {
+              filename: 'apps/site/pages/en/blog/post-2.md',
+            },
+            {
+              filename: 'apps/site/pages/en/blog/post-3.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -411,6 +488,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/in-pr.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -455,6 +544,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -489,6 +590,18 @@ describe('createReviewForFutureDates', () => {
               '--- a/file\n+++ b/file\n@@ -1,5 +1,5 @@\n+date: 2099-01-01\n+publishDate: 2099-01-02',
           },
         ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
       })
     );
 
@@ -527,6 +640,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -557,6 +682,18 @@ describe('createReviewForFutureDates', () => {
               '--- a/file\n+++ b/file\n@@ -1,5 +1,5 @@\n date: 2099-01-01\n+content: Some new content',
           },
         ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
       })
     );
 
@@ -606,6 +743,18 @@ describe('createReviewForFutureDates', () => {
             patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
           },
         ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
       })
     );
 
@@ -680,6 +829,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -726,6 +887,18 @@ describe('createReviewForFutureDates', () => {
             patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
           },
         ],
+      })
+    );
+
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/test.md',
+            },
+          ],
+        },
       })
     );
 
@@ -780,6 +953,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/changed-file.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -825,6 +1010,18 @@ describe('createReviewForFutureDates', () => {
       })
     );
 
+    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: {
+          files: [
+            {
+              filename: 'apps/site/pages/en/blog/other-file.md',
+            },
+          ],
+        },
+      })
+    );
+
     await createReviewForFutureDates({
       github: mockGithub,
       context: mockContext,
@@ -835,7 +1032,9 @@ describe('createReviewForFutureDates', () => {
     assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
     assert.ok(
       mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes('No future posts in changed files')
+        call.arguments[0].includes(
+          'No future posts in files changed by this commit'
+        )
       )
     );
   });

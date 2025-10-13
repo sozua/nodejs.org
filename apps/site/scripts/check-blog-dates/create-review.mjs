@@ -150,12 +150,30 @@ async function createReview({
 // ============================================================================
 
 /**
+ * Gets files changed in a specific commit.
+ */
+async function getCommitFiles({ github, requestContext, commitSha, core }) {
+  try {
+    const { data: commit } = await github.rest.repos.getCommit({
+      owner: requestContext.owner,
+      repo: requestContext.repo,
+      ref: commitSha,
+    });
+
+    return commit.files || [];
+  } catch (error) {
+    core.warning(`Failed to get commit files: ${error.message}`);
+    return [];
+  }
+}
+
+/**
  * Creates inline review comments for blog posts with future publish dates.
  *
  * Process:
  * 1. Parse future posts from environment
- * 2. Fetch PR files and existing comments
- * 3. Filter posts to only those with modified date lines in this PR
+ * 2. Fetch files changed in THIS COMMIT (not entire PR) and existing comments
+ * 3. Filter posts to only those modified in this specific commit
  * 4. Update existing comments or prepare new ones
  * 5. Create a single review with all new comments
  */
@@ -176,37 +194,48 @@ export async function createReviewForFutureDates({ github, context, core }) {
     pull_number: context.issue.number,
   };
 
-  // Fetch PR data in parallel
-  const [{ data: files }, { data: existingComments }] = await Promise.all([
-    github.rest.pulls.listFiles(requestContext),
-    github.rest.pulls.listReviewComments(requestContext),
-  ]);
+  const commitSha = context.payload.pull_request.head.sha;
 
-  // Create a set of changed file paths for quick lookup
-  const changedFilePaths = new Set(files.map(f => f.filename));
+  core.info(`Checking files changed in commit ${commitSha.substring(0, 7)}`);
 
-  // Filter future posts to only include files that are in the PR's changed files
+  // Fetch commit files and existing comments in parallel
+  // Use getCommit to get only files changed in THIS commit, not entire PR
+  const [commitFiles, { data: allPrFiles }, { data: existingComments }] =
+    await Promise.all([
+      getCommitFiles({ github, requestContext, commitSha, core }),
+      github.rest.pulls.listFiles(requestContext),
+      github.rest.pulls.listReviewComments(requestContext),
+    ]);
+
+  // Create a set of files changed in THIS commit only
+  const commitChangedPaths = new Set(commitFiles.map(f => f.filename));
+
+  core.info(`Found ${commitChangedPaths.size} file(s) changed in this commit`);
+
+  // Filter future posts to only include files changed in THIS commit
   const relevantPosts = futurePosts.filter(post => {
     const slug = post.slug.startsWith('/') ? post.slug : `/${post.slug}`;
     const filePath = `apps/site/pages/en${slug}.md`;
-    return changedFilePaths.has(filePath);
+    return commitChangedPaths.has(filePath);
   });
 
   if (relevantPosts.length === 0) {
-    core.info('No future posts in changed files, skipping review creation');
+    core.info(
+      'No future posts in files changed by this commit, skipping review creation'
+    );
     return;
   }
 
   core.info(
-    `Processing ${relevantPosts.length} future post(s) from ${futurePosts.length} total future posts`
+    `Processing ${relevantPosts.length} future post(s) from ${futurePosts.length} total future posts (changed in this commit)`
   );
 
-  // Process each relevant post
+  // Process each relevant post using the full PR file list for patches
   const newComments = [];
   for (const post of relevantPosts) {
     const comment = await processPost({
       post,
-      files,
+      files: allPrFiles,
       existingComments,
       github,
       requestContext,
@@ -223,7 +252,7 @@ export async function createReviewForFutureDates({ github, context, core }) {
     await createReview({
       github,
       requestContext,
-      commitId: context.payload.pull_request.head.sha,
+      commitId: commitSha,
       comments: newComments,
       core,
     });
