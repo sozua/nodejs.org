@@ -65,7 +65,7 @@ jobs:
         if: steps.check-dates.outputs.HAS_FUTURE_POSTS == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
-          FUTURE_POSTS: ${{ steps.check-dates.outputs.FUTURE_POSTS }}
+          FUTURE_POSTS_JSON: ${{ steps.check-dates.outputs.FUTURE_POSTS_JSON }}
         with:
           script: |
             const { createReviewForFutureDates } = await import('${{github.workspace}}/apps/site/scripts/check-blog-dates/create-review.mjs')
