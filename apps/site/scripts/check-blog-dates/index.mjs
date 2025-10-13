@@ -64,20 +64,7 @@ export async function checkAndFormatBlogDates({
     return;
   }
 
-  const { futurePosts: allFuturePosts } = await blogDataGenerator();
-
-  // Filter to only posts that are in the PR diff
-  const { data: files } = await github.rest.pulls.listFiles({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    pull_number: context.payload.pull_request.number,
-  });
-
-  const changedFiles = new Set(files.map(f => f.filename));
-
-  const futurePosts = allFuturePosts.filter(post =>
-    isPostInChangedFiles(post, changedFiles)
-  );
+  const { futurePosts } = await blogDataGenerator();
 
   const hasFuturePosts = futurePosts.length > 0;
 
@@ -87,25 +74,4 @@ export async function checkAndFormatBlogDates({
   } else {
     core.setOutput('HAS_FUTURE_POSTS', 'false');
   }
-}
-
-/**
- * Builds the file path for a blog post based on its slug
- * @param {string} slug - The blog post slug
- * @returns {string} The file path
- */
-export function buildBlogPostFilePath(slug) {
-  const normalizedSlug = slug.startsWith('/') ? slug : `/${slug}`;
-  return `apps/site/pages/en${normalizedSlug}.md`;
-}
-
-/**
- * Checks if a blog post is in the changed files
- * @param {Object} post - The blog post object
- * @param {Set<string>} changedFiles - Set of changed file paths
- * @returns {boolean} True if the post is in changed files
- */
-export function isPostInChangedFiles(post, changedFiles) {
-  const filePath = buildBlogPostFilePath(post.slug);
-  return changedFiles.has(filePath);
 }

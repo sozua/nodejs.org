@@ -5,25 +5,144 @@ import {
   createReviewForFutureDates,
   buildCommentBody,
   BOT_USER_LOGIN,
-  BOT_PREFIX,
+  COMMENT_IDENTIFIER,
 } from '../create-review.mjs';
+
+describe('buildCommentBody', () => {
+  it('should return resolved message when no future posts', () => {
+    const result = buildCommentBody([]);
+
+    assert.ok(
+      result.includes(COMMENT_IDENTIFIER),
+      'The comment body should include the COMMENT_IDENTIFIER'
+    );
+    assert.ok(
+      result.includes('Future Blog Posts Status'),
+      'The comment body should include the status'
+    );
+    assert.ok(
+      result.includes('have been resolved'),
+      'The comment body should indicate that the posts have been resolved'
+    );
+  });
+
+  it('should format table with single future post', () => {
+    const posts = [
+      {
+        slug: '/blog/test-post',
+        title: 'Test Post',
+        date: '2099-12-31T00:00:00.000Z',
+        daysInFuture: 100,
+      },
+    ];
+
+    const result = buildCommentBody(posts);
+
+    assert.ok(
+      result.includes(COMMENT_IDENTIFIER),
+      'The comment body should include the COMMENT_IDENTIFIER'
+    );
+    assert.ok(
+      result.includes('Future Blog Posts Detected'),
+      'The comment body should include the detection message'
+    );
+    assert.ok(
+      result.includes('**1 post scheduled in the future**'),
+      'The comment body should include the number of future posts'
+    );
+    assert.ok(
+      result.includes('/blog/test-post'),
+      'The comment body should include the post slug'
+    );
+    assert.ok(
+      result.includes('100 days'),
+      'The comment body should include the number of days in the future'
+    );
+    assert.ok(
+      result.includes('Scheduled'),
+      'The comment body should include the status'
+    );
+  });
+
+  it('should format table with multiple future posts', () => {
+    const posts = [
+      {
+        slug: '/blog/post-1',
+        title: 'Post 1',
+        date: '2099-01-01T00:00:00.000Z',
+        daysInFuture: 50,
+      },
+      {
+        slug: '/blog/post-2',
+        title: 'Post 2',
+        date: '2099-02-01T00:00:00.000Z',
+        daysInFuture: 80,
+      },
+    ];
+
+    const result = buildCommentBody(posts);
+
+    assert.ok(
+      result.includes('**2 posts scheduled in the future**'),
+      'The comment body should include the number of future posts'
+    );
+    assert.ok(
+      result.includes('/blog/post-1'),
+      'The comment body should include the first post slug'
+    );
+    assert.ok(
+      result.includes('/blog/post-2'),
+      'The comment body should include the second post slug'
+    );
+    assert.ok(
+      result.includes('50 days'),
+      'The comment body should include the number of days in the future for the first post'
+    );
+    assert.ok(
+      result.includes('80 days'),
+      'The comment body should include the number of days in the future for the second post'
+    );
+  });
+
+  it('should handle singular day correctly', () => {
+    const posts = [
+      {
+        slug: '/blog/test',
+        title: 'Test',
+        date: '2099-01-01T00:00:00.000Z',
+        daysInFuture: 1,
+      },
+    ];
+
+    const result = buildCommentBody(posts);
+
+    assert.ok(
+      result.includes('1 day'),
+      "The comment body should use 'day' for a single day"
+    );
+    assert.ok(
+      !result.includes('1 days'),
+      "The comment body should not use 'days' for a single day"
+    );
+  });
+});
 
 describe('createReviewForFutureDates', () => {
   let mockGithub, mockContext, mockCore;
+
+  const setFuturePostsEnv = posts => {
+    process.env.FUTURE_POSTS_JSON = JSON.stringify(posts);
+  };
 
   beforeEach(t => {
     process.env = {};
 
     mockGithub = {
       rest: {
-        pulls: {
-          createReview: t.mock.fn(),
-          listFiles: t.mock.fn(() => Promise.resolve({ data: [] })),
-          listReviewComments: t.mock.fn(() => Promise.resolve({ data: [] })),
-          updateReviewComment: t.mock.fn(),
-        },
-        repos: {
-          getCommit: t.mock.fn(() => Promise.resolve({ data: { files: [] } })),
+        issues: {
+          createComment: t.mock.fn(() => Promise.resolve({ data: {} })),
+          updateComment: t.mock.fn(() => Promise.resolve({ data: {} })),
+          listComments: t.mock.fn(() => Promise.resolve({ data: [] })),
         },
       },
     };
@@ -57,750 +176,235 @@ describe('createReviewForFutureDates', () => {
       core: mockCore,
     });
 
-    assert.equal(mockGithub.rest.pulls.listFiles.mock.calls.length, 0);
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
+    assert.equal(mockGithub.rest.issues.createComment.mock.calls.length, 0);
     assert.equal(mockCore.info.mock.calls.length, 1);
-  });
-
-  it('should create review with inline comments for new posts', async () => {
-    const MOCK_DATE = '2099-01-01T00:00:00.000Z';
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: MOCK_DATE,
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-
-    const createCall =
-      mockGithub.rest.pulls.createReview.mock.calls[0].arguments[0];
-    assert.equal(createCall.pull_number, 123);
-    assert.equal(createCall.event, 'COMMENT');
-    assert.equal(createCall.comments.length, 1);
-    assert.equal(
-      createCall.comments[0].path,
-      'apps/site/pages/en/blog/test.md'
-    );
-    assert.ok(createCall.comments[0].body.includes(MOCK_DATE));
-  });
-
-  it('should skip when file is not in PR diff', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({ data: [] })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: { files: [] },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    // Should skip entirely since no files in changed files list
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
     assert.ok(
-      mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes(
-          'No future posts in files changed by this commit'
-        )
-      )
+      mockCore.info.mock.calls[0].arguments[0].includes(
+        'No future posts found'
+      ),
+      'should log that no future posts were found'
     );
   });
 
-  it('should warn when date line is not found in patch', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
+  describe('Comment Handling', () => {
+    const futurePost = {
+      slug: '/blog/test',
+      title: 'Test Post',
+      date: '2099-01-01T00:00:00.000Z',
+      daysInFuture: 100,
+    };
 
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+title: Test',
-          },
-        ],
-      })
-    );
+    it('should create new comment when no existing comment', async () => {
+      setFuturePostsEnv([futurePost]);
 
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
+
+      assert.equal(mockGithub.rest.issues.createComment.mock.calls.length, 1);
+      assert.equal(mockGithub.rest.issues.updateComment.mock.calls.length, 0);
+
+      const createCall =
+        mockGithub.rest.issues.createComment.mock.calls[0].arguments[0];
+      assert.equal(createCall.issue_number, 123);
+      assert.ok(
+        createCall.body.includes('/blog/test'),
+        'The comment body should include the post slug'
+      );
+      assert.ok(
+        createCall.body.includes(COMMENT_IDENTIFIER),
+        'The comment body should include the COMMENT_IDENTIFIER'
+      );
+    });
+
+    it('should update existing comment', async () => {
+      setFuturePostsEnv([futurePost]);
+
+      mockGithub.rest.issues.listComments.mock.mockImplementation(() =>
+        Promise.resolve({
+          data: [
             {
-              filename: 'apps/site/pages/en/blog/test.md',
+              id: 456,
+              user: { login: BOT_USER_LOGIN },
+              body: `${COMMENT_IDENTIFIER}\nOld content`,
             },
           ],
-        },
-      })
-    );
+        })
+      );
 
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
+
+      assert.equal(mockGithub.rest.issues.createComment.mock.calls.length, 0);
+      assert.equal(mockGithub.rest.issues.updateComment.mock.calls.length, 1);
+
+      const updateCall =
+        mockGithub.rest.issues.updateComment.mock.calls[0].arguments[0];
+      assert.equal(updateCall.comment_id, 456);
+      assert.ok(
+        updateCall.body.includes('/blog/test'),
+        'The comment body should include the post slug'
+      );
     });
 
-    assert.equal(mockCore.info.mock.calls.length, 4); // commit info, found files, processing, skipping
-    assert.ok(
-      mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes('date line not modified')
-      )
-    );
-  });
+    it('should handle comment creation failure gracefully', async () => {
+      setFuturePostsEnv([futurePost]);
 
-  it('should update existing bot comment when content changes', async () => {
-    const OLD_DATE = '2098-01-01T00:00:00.000Z';
-    const NEW_DATE = '2099-01-01T00:00:00.000Z';
+      mockGithub.rest.issues.createComment.mock.mockImplementation(() =>
+        Promise.reject(new Error('API Error'))
+      );
 
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: NEW_DATE,
-        daysInFuture: 100,
-      },
-    ]);
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
 
-    mockGithub.rest.pulls.listReviewComments.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            id: 456,
-            path: 'apps/site/pages/en/blog/test.md',
-            user: { login: BOT_USER_LOGIN },
-            body: `${BOT_PREFIX} ${OLD_DATE}\n\nThis post is scheduled 50 days in the future. Make sure this date is correct.`,
-          },
-        ],
-      })
-    );
+      assert.equal(mockCore.warning.mock.calls.length, 1);
+      assert.ok(
+        mockCore.warning.mock.calls[0].arguments[0].includes(
+          'Failed to upsert comment'
+        ),
+        'should warn about the failure'
+      );
+    });
 
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
+    it('should handle comment update failure gracefully', async () => {
+      setFuturePostsEnv([futurePost]);
 
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
+      mockGithub.rest.issues.listComments.mock.mockImplementation(() =>
+        Promise.resolve({
+          data: [
             {
-              filename: 'apps/site/pages/en/blog/test.md',
+              id: 456,
+              user: { login: BOT_USER_LOGIN },
+              body: `${COMMENT_IDENTIFIER}\nOld`,
             },
           ],
-        },
-      })
-    );
+        })
+      );
 
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
+      mockGithub.rest.issues.updateComment.mock.mockImplementation(() =>
+        Promise.reject(new Error('API Error'))
+      );
+
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
+
+      assert.equal(mockCore.warning.mock.calls.length, 1);
+      assert.ok(
+        mockCore.warning.mock.calls[0].arguments[0].includes(
+          'Failed to upsert comment'
+        ),
+        'should warn about the failure'
+      );
     });
 
-    assert.equal(
-      mockGithub.rest.pulls.updateReviewComment.mock.calls.length,
-      1
-    );
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
+    it('should skip non-bot comments when finding existing comment', async () => {
+      setFuturePostsEnv([futurePost]);
 
-    const updateCall =
-      mockGithub.rest.pulls.updateReviewComment.mock.calls[0].arguments[0];
-    assert.equal(updateCall.comment_id, 456);
-    assert.ok(updateCall.body.includes(NEW_DATE));
-    assert.ok(updateCall.body.includes('100 days'));
-  });
-
-  it('should not update existing bot comment when content is identical', async () => {
-    const MOCK_DATE = '2099-01-01T00:00:00.000Z';
-
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: MOCK_DATE,
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listReviewComments.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            id: 456,
-            path: 'apps/site/pages/en/blog/test.md',
-            user: { login: BOT_USER_LOGIN },
-            body: `${BOT_PREFIX} ${MOCK_DATE}\n\nThis post is scheduled 100 days in the future. Make sure this date is correct.`,
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
+      mockGithub.rest.issues.listComments.mock.mockImplementation(() =>
+        Promise.resolve({
+          data: [
             {
-              filename: 'apps/site/pages/en/blog/test.md',
+              id: 456,
+              user: { login: 'human-user' },
+              body: `${COMMENT_IDENTIFIER}\nHuman comment`,
             },
           ],
+        })
+      );
+
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
+
+      // Should create new comment, not update human's comment
+      assert.equal(mockGithub.rest.issues.createComment.mock.calls.length, 1);
+      assert.equal(mockGithub.rest.issues.updateComment.mock.calls.length, 0);
+    });
+  });
+
+  describe('Post Filtering', () => {
+    it('should filter out resolved posts based on current date', async () => {
+      setFuturePostsEnv([
+        {
+          slug: '/blog/past-post',
+          title: 'Past Post',
+          date: '2020-01-01T00:00:00.000Z', // In the past
+          daysInFuture: 1,
         },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(
-      mockGithub.rest.pulls.updateReviewComment.mock.calls.length,
-      0
-    );
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
-  });
-
-  it('should handle update failure gracefully', async () => {
-    const NEW_DATE = '2099-01-01T00:00:00.000Z';
-
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: NEW_DATE,
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listReviewComments.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            id: 456,
-            path: 'apps/site/pages/en/blog/test.md',
-            user: { login: BOT_USER_LOGIN },
-            body: `${BOT_PREFIX} OLD_DATE\n\nOld content`,
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
+        {
+          slug: '/blog/future-post',
+          title: 'Future Post',
+          date: '2099-01-01T00:00:00.000Z', // In the future
+          daysInFuture: 100,
         },
-      })
-    );
+      ]);
 
-    mockGithub.rest.pulls.updateReviewComment.mock.mockImplementation(() =>
-      Promise.reject(new Error('API Error'))
-    );
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
 
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
+      const createCall =
+        mockGithub.rest.issues.createComment.mock.calls[0].arguments[0];
+      // Should only show Future Post (Past Post is resolved by current date)
+      assert.ok(
+        createCall.body.includes('/blog/future-post'),
+        'The comment body should include the future post'
+      );
+      assert.ok(
+        !createCall.body.includes('/blog/past-post'),
+        'The comment body should not include the past post'
+      );
+      assert.ok(
+        createCall.body.includes('1 post scheduled'),
+        'The comment body should include the number of future posts'
+      );
     });
 
-    assert.equal(
-      mockGithub.rest.pulls.updateReviewComment.mock.calls.length,
-      1
-    );
-    assert.equal(mockCore.warning.mock.calls.length, 1);
-    assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes('Failed to update')
-    );
-  });
-
-  it('should create review with multiple inline comments for multiple posts', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/post-1',
-        title: 'Post 1',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-      {
-        slug: '/blog/post-2',
-        title: 'Post 2',
-        date: '2099-02-01T00:00:00.000Z',
-        daysInFuture: 131,
-      },
-      {
-        slug: '/blog/post-3',
-        title: 'Post 3',
-        date: '2099-03-01T00:00:00.000Z',
-        daysInFuture: 159,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/post-1.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-          {
-            filename: 'apps/site/pages/en/blog/post-2.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-02-01',
-          },
-          {
-            filename: 'apps/site/pages/en/blog/post-3.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-03-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/post-1.md',
-            },
-            {
-              filename: 'apps/site/pages/en/blog/post-2.md',
-            },
-            {
-              filename: 'apps/site/pages/en/blog/post-3.md',
-            },
-          ],
+    it('should show resolved message when all posts are resolved by current date', async () => {
+      setFuturePostsEnv([
+        {
+          slug: '/blog/past-post',
+          title: 'Past Post',
+          date: '2020-01-01T00:00:00.000Z',
+          daysInFuture: 1,
         },
-      })
-    );
+      ]);
 
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
+      await createReviewForFutureDates({
+        github: mockGithub,
+        context: mockContext,
+        core: mockCore,
+      });
+
+      const createCall =
+        mockGithub.rest.issues.createComment.mock.calls[0].arguments[0];
+      assert.ok(
+        createCall.body.includes('Future Blog Posts Status'),
+        'The comment body should include the status'
+      );
+      assert.ok(
+        !createCall.body.includes('/blog/past-post'),
+        'The comment body should not include the past post'
+      );
     });
-
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-
-    const createCall =
-      mockGithub.rest.pulls.createReview.mock.calls[0].arguments[0];
-    assert.equal(createCall.comments.length, 3);
-    assert.equal(
-      createCall.comments[0].path,
-      'apps/site/pages/en/blog/post-1.md'
-    );
-    assert.equal(
-      createCall.comments[1].path,
-      'apps/site/pages/en/blog/post-2.md'
-    );
-    assert.equal(
-      createCall.comments[2].path,
-      'apps/site/pages/en/blog/post-3.md'
-    );
-    assert.ok(createCall.comments[0].body.includes('100 days'));
-    assert.ok(createCall.comments[1].body.includes('131 days'));
-    assert.ok(createCall.comments[2].body.includes('159 days'));
   });
 
-  it('should handle mixed scenarios with some files not in PR', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/in-pr',
-        title: 'In PR',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-      {
-        slug: '/blog/not-in-pr',
-        title: 'Not in PR',
-        date: '2099-02-01T00:00:00.000Z',
-        daysInFuture: 131,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/in-pr.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/in-pr.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-    const createCall =
-      mockGithub.rest.pulls.createReview.mock.calls[0].arguments[0];
-    assert.equal(createCall.comments.length, 1);
-    assert.equal(
-      createCall.comments[0].path,
-      'apps/site/pages/en/blog/in-pr.md'
-    );
-
-    // File not in PR is now filtered out before processing, so no warning
-    assert.ok(
-      mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes('Processing 1 future post(s) from 2')
-      )
-    );
-  });
-
-  it('should handle file with undefined patch', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: undefined,
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
-    assert.equal(mockCore.warning.mock.calls.length, 1);
-    assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes(
-        'not found in PR diff'
-      )
-    );
-  });
-
-  it('should handle multiple date: fields and find first one', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch:
-              '--- a/file\n+++ b/file\n@@ -1,5 +1,5 @@\n+date: 2099-01-01\n+publishDate: 2099-01-02',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-    const createCall =
-      mockGithub.rest.pulls.createReview.mock.calls[0].arguments[0];
-    // Should comment on the first date: field (line 4 in the patch)
-    assert.equal(createCall.comments[0].position, 4);
-  });
-
-  it('should handle date: in removed lines gracefully', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch:
-              '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n-date: 2098-01-01\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    // Should find the +date: line (the added one)
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-  });
-
-  it('should skip file when only date line in context (not added)', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            // Date line in context (no + prefix), only content changed
-            patch:
-              '--- a/file\n+++ b/file\n@@ -1,5 +1,5 @@\n date: 2099-01-01\n+content: Some new content',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    // Should NOT create a comment since date wasn't modified (no +date:)
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
-    assert.ok(
-      mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes('date line not modified')
-      )
-    );
-  });
-
-  it('should handle empty FUTURE_POSTS_JSON array', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([]);
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.listFiles.mock.calls.length, 1);
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
-  });
-
-  it('should handle review creation failure gracefully', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    mockGithub.rest.pulls.createReview.mock.mockImplementation(() =>
-      Promise.reject(new Error('GitHub API Error'))
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-    assert.equal(mockCore.warning.mock.calls.length, 1);
-    assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes(
-        'Failed to create review'
-      )
-    );
-  });
-
-  it('should throw error for malformed FUTURE_POSTS_JSON', async () => {
+  it('should handle malformed FUTURE_POSTS_JSON', async () => {
     process.env.FUTURE_POSTS_JSON = 'invalid json {';
 
     await assert.rejects(
@@ -815,329 +419,5 @@ describe('createReviewForFutureDates', () => {
         name: 'SyntaxError',
       }
     );
-  });
-
-  it('should skip non-bot comments when looking for existing comments', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    // Existing comment from a human user, not bot
-    mockGithub.rest.pulls.listReviewComments.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            id: 789,
-            path: 'apps/site/pages/en/blog/test.md',
-            user: { login: 'human-user' },
-            body: `${BOT_PREFIX} some comment`,
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    // Should create new comment, not update human's comment
-    assert.equal(
-      mockGithub.rest.pulls.updateReviewComment.mock.calls.length,
-      0
-    );
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-  });
-
-  it('should skip bot comments without the BOT_PREFIX', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    // Bot comment but without the prefix
-    mockGithub.rest.pulls.listReviewComments.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            id: 789,
-            path: 'apps/site/pages/en/blog/test.md',
-            user: { login: BOT_USER_LOGIN },
-            body: 'Some other bot comment without the prefix',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/test.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    // Should create new comment, not update the bot's other comment
-    assert.equal(
-      mockGithub.rest.pulls.updateReviewComment.mock.calls.length,
-      0
-    );
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-  });
-
-  it('should only process files that are in PR changed files', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/changed-file',
-        title: 'Changed File',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-      {
-        slug: '/blog/unchanged-file-1',
-        title: 'Unchanged File 1',
-        date: '2099-02-01T00:00:00.000Z',
-        daysInFuture: 131,
-      },
-      {
-        slug: '/blog/unchanged-file-2',
-        title: 'Unchanged File 2',
-        date: '2099-03-01T00:00:00.000Z',
-        daysInFuture: 159,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/changed-file.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-          {
-            filename: 'apps/site/pages/en/blog/other-file.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+content: foo',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/changed-file.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    // Should only create comment for the one file that is both in future posts AND in changed files
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
-    const createCall =
-      mockGithub.rest.pulls.createReview.mock.calls[0].arguments[0];
-    assert.equal(createCall.comments.length, 1);
-    assert.equal(
-      createCall.comments[0].path,
-      'apps/site/pages/en/blog/changed-file.md'
-    );
-
-    // Verify info message about filtering
-    assert.ok(
-      mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes('Processing 1 future post(s) from 3')
-      )
-    );
-  });
-
-  it('should skip when no future posts are in changed files', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/unchanged-file',
-        title: 'Unchanged File',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/other-file.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+content: foo',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          files: [
-            {
-              filename: 'apps/site/pages/en/blog/other-file.md',
-            },
-          ],
-        },
-      })
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockGithub.rest.pulls.listFiles.mock.calls.length, 1);
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
-    assert.ok(
-      mockCore.info.mock.calls.some(call =>
-        call.arguments[0].includes(
-          'No future posts in files changed by this commit'
-        )
-      )
-    );
-  });
-
-  it('should handle getCommitFiles error gracefully', async () => {
-    process.env.FUTURE_POSTS_JSON = JSON.stringify([
-      {
-        slug: '/blog/test',
-        title: 'Test Post',
-        date: '2099-01-01T00:00:00.000Z',
-        daysInFuture: 100,
-      },
-    ]);
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2099-01-01',
-          },
-        ],
-      })
-    );
-
-    mockGithub.rest.repos.getCommit.mock.mockImplementation(() =>
-      Promise.reject(new Error('API Error'))
-    );
-
-    await createReviewForFutureDates({
-      github: mockGithub,
-      context: mockContext,
-      core: mockCore,
-    });
-
-    assert.equal(mockCore.warning.mock.calls.length, 1);
-    assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes(
-        'Failed to get commit files'
-      )
-    );
-    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
-  });
-});
-
-describe('buildCommentBody', () => {
-  it('should format comment with date and days in future', () => {
-    const post = {
-      date: '2099-01-15T00:00:00.000Z',
-      daysInFuture: 42,
-    };
-
-    const result = buildCommentBody(post);
-
-    assert.ok(result.includes(BOT_PREFIX));
-    assert.ok(result.includes('2099-01-15T00:00:00.000Z'));
-    assert.ok(result.includes('42 days in the future'));
-    assert.ok(result.includes('Make sure this date is correct'));
-  });
-
-  it('should handle singular day correctly', () => {
-    const post = {
-      date: '2099-01-01T00:00:00.000Z',
-      daysInFuture: 1,
-    };
-
-    const result = buildCommentBody(post);
-
-    assert.ok(result.includes('1 day in the future'));
-    assert.ok(!result.includes('1 days'));
-  });
-
-  it('should handle large number of days', () => {
-    const post = {
-      date: '2100-12-31T00:00:00.000Z',
-      daysInFuture: 27500,
-    };
-
-    const result = buildCommentBody(post);
-
-    assert.ok(result.includes('27500 days in the future'));
   });
 });

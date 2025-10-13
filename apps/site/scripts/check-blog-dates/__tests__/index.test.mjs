@@ -66,11 +66,14 @@ describe('checkBlogDates', () => {
     const result = await checkBlogDates(currentDate, mockGenerator);
 
     result.futurePosts.forEach(post => {
-      assert.ok(post.slug);
-      assert.ok(post.title);
-      assert.ok(post.date);
-      assert.ok(typeof post.daysInFuture === 'number');
-      assert.ok(post.daysInFuture > 0);
+      assert.ok(post.slug, 'post should have a slug');
+      assert.ok(post.title, 'post should have a title');
+      assert.ok(post.date, 'post should have a date');
+      assert.ok(
+        typeof post.daysInFuture === 'number',
+        'daysInFuture should be a number'
+      );
+      assert.ok(post.daysInFuture > 0, 'daysInFuture should be greater than 0');
     });
   });
 
@@ -111,6 +114,23 @@ describe('checkBlogDates', () => {
     assert.equal(result.hasFuturePosts, true);
     assert.equal(result.futurePosts.length, 1);
   });
+
+  it('should handle blogDataGenerator failure in checkBlogDates', async () => {
+    const mockGenerator = async () => {
+      throw new Error('Generator Error');
+    };
+    const currentDate = new Date('2025-01-01');
+
+    await assert.rejects(
+      async () => {
+        await checkBlogDates(currentDate, mockGenerator);
+      },
+      {
+        name: 'Error',
+        message: 'Generator Error',
+      }
+    );
+  });
 });
 
 describe('checkAndFormatBlogDates', () => {
@@ -120,21 +140,17 @@ describe('checkAndFormatBlogDates', () => {
     mockCore = {
       info: t.mock.fn(),
       setOutput: t.mock.fn(),
+      warning: t.mock.fn(),
     };
 
-    mockGithub = {
-      rest: {
-        pulls: {
-          listFiles: t.mock.fn(() => Promise.resolve({ data: [] })),
-        },
-      },
-    };
+    mockGithub = {};
 
     mockContext = {
       repo: { owner: 'nodejs', repo: 'nodejs.org' },
       payload: {
         pull_request: {
           number: 123,
+          head: { sha: 'abc123' },
         },
       },
     };
@@ -155,7 +171,8 @@ describe('checkAndFormatBlogDates', () => {
     assert.ok(
       mockCore.info.mock.calls[0].arguments[0].includes(
         'Not running in a PR context'
-      )
+      ),
+      'should log that it is not running in a PR context'
     );
     assert.equal(mockCore.setOutput.mock.calls.length, 1);
     assert.equal(
@@ -176,7 +193,8 @@ describe('checkAndFormatBlogDates', () => {
     assert.ok(
       mockCore.info.mock.calls[0].arguments[0].includes(
         'Not running in a PR context'
-      )
+      ),
+      'should log that it is not running in a PR context'
     );
     assert.equal(mockCore.setOutput.mock.calls.length, 1);
     assert.equal(
@@ -197,7 +215,8 @@ describe('checkAndFormatBlogDates', () => {
     assert.ok(
       mockCore.info.mock.calls[0].arguments[0].includes(
         'Not running in a PR context'
-      )
+      ),
+      'should log that it is not running in a PR context'
     );
     assert.equal(mockCore.setOutput.mock.calls.length, 1);
     assert.equal(
@@ -207,96 +226,80 @@ describe('checkAndFormatBlogDates', () => {
     assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], 'false');
   });
 
-  it('should process future posts in PR context', async () => {
-    // This test will use the real checkBlogDates function, but we need to ensure
-    // that there are actual future posts in the blog data for this to work
-    // Since we can't easily mock the blog data generator, we'll test the PR filtering logic
-    // by ensuring the function runs without errors in a PR context
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/some-post.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2025-12-31',
-          },
-        ],
-      })
-    );
+  it('should set HAS_FUTURE_POSTS to false when no future posts exist', async () => {
+    const mockBlogDataGenerator = async () => ({
+      futurePosts: [],
+      hasFuturePosts: false,
+    });
 
     await checkAndFormatBlogDates({
       core: mockCore,
       github: mockGithub,
       context: mockContext,
+      blogDataGenerator: mockBlogDataGenerator,
     });
 
-    // The function should have called setOutput at least once
-    assert.ok(mockCore.setOutput.mock.calls.length >= 1);
-    assert.equal(
-      mockCore.setOutput.mock.calls[0].arguments[0],
-      'HAS_FUTURE_POSTS'
+    const hasFuturePostsCall = mockCore.setOutput.mock.calls.find(
+      call => call.arguments[0] === 'HAS_FUTURE_POSTS'
+    );
+    assert.ok(hasFuturePostsCall, 'HAS_FUTURE_POSTS should be set');
+    assert.equal(hasFuturePostsCall.arguments[1], 'false');
+  });
+
+  it('should set FUTURE_POSTS_JSON when future posts exist', async () => {
+    const mockBlogDataGenerator = async () => ({
+      futurePosts: [
+        {
+          slug: '/blog/future-post',
+          title: 'Future Post',
+          date: '2099-12-31T00:00:00.000Z',
+          daysInFuture: 100,
+        },
+      ],
+      hasFuturePosts: true,
+    });
+
+    await checkAndFormatBlogDates({
+      core: mockCore,
+      github: mockGithub,
+      context: mockContext,
+      blogDataGenerator: mockBlogDataGenerator,
+    });
+
+    const hasFuturePostsCall = mockCore.setOutput.mock.calls.find(
+      call => call.arguments[0] === 'HAS_FUTURE_POSTS'
+    );
+    assert.ok(hasFuturePostsCall, 'HAS_FUTURE_POSTS should be set');
+    assert.equal(hasFuturePostsCall.arguments[1], 'true');
+
+    const jsonCall = mockCore.setOutput.mock.calls.find(
+      call => call.arguments[0] === 'FUTURE_POSTS_JSON'
+    );
+    assert.ok(jsonCall, 'FUTURE_POSTS_JSON should be set');
+    assert.ok(
+      jsonCall.arguments[1].includes('/blog/future-post'),
+      'The JSON should include the future post'
     );
   });
 
-  it('should handle slug processing correctly', async () => {
-    // Test the slug processing logic by creating a scenario where we have
-    // a future post with a slug that doesn't start with '/'
+  it('should handle blogDataGenerator failure in checkAndFormatBlogDates', async () => {
+    const mockBlogDataGenerator = async () => {
+      throw new Error('Generator Error');
+    };
 
-    // We'll create a test that exercises the slug processing logic
-    // by ensuring the function processes different slug formats
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/test-post.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2025-12-31',
-          },
-        ],
-      })
-    );
-
-    await checkAndFormatBlogDates({
-      core: mockCore,
-      github: mockGithub,
-      context: mockContext,
-    });
-
-    // The function should have called setOutput at least once
-    assert.ok(mockCore.setOutput.mock.calls.length >= 1);
-    assert.equal(
-      mockCore.setOutput.mock.calls[0].arguments[0],
-      'HAS_FUTURE_POSTS'
-    );
-  });
-
-  it('should set HAS_FUTURE_POSTS to false when no future posts in PR', async () => {
-    // This test will use the real checkBlogDates function
-    // Since we can't easily mock the blog data generator, we'll test the PR filtering logic
-    // by ensuring the function runs without errors in a PR context
-
-    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
-      Promise.resolve({
-        data: [
-          {
-            filename: 'apps/site/pages/en/blog/some-post.md',
-            patch: '--- a/file\n+++ b/file\n@@ -1,3 +1,3 @@\n+date: 2024-01-01',
-          },
-        ],
-      })
-    );
-
-    await checkAndFormatBlogDates({
-      core: mockCore,
-      github: mockGithub,
-      context: mockContext,
-    });
-
-    // The function should have called setOutput at least once
-    assert.ok(mockCore.setOutput.mock.calls.length >= 1);
-    assert.equal(
-      mockCore.setOutput.mock.calls[0].arguments[0],
-      'HAS_FUTURE_POSTS'
+    await assert.rejects(
+      async () => {
+        await checkAndFormatBlogDates({
+          core: mockCore,
+          github: mockGithub,
+          context: mockContext,
+          blogDataGenerator: mockBlogDataGenerator,
+        });
+      },
+      {
+        name: 'Error',
+        message: 'Generator Error',
+      }
     );
   });
 });
