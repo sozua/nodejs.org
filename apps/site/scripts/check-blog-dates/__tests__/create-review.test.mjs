@@ -4,6 +4,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import {
   createReviewForFutureDates,
   buildCommentBody,
+  BOT_USER_LOGIN,
+  BOT_PREFIX,
 } from '../create-review.mjs';
 
 describe('createReviewForFutureDates', () => {
@@ -179,8 +181,8 @@ describe('createReviewForFutureDates', () => {
           {
             id: 456,
             path: 'apps/site/pages/en/blog/test.md',
-            user: { login: 'github-actions[bot]' },
-            body: `**Detected post in future:** ${OLD_DATE}\n\nThis post is scheduled 50 days in the future. Make sure this date is correct.`,
+            user: { login: BOT_USER_LOGIN },
+            body: `${BOT_PREFIX} ${OLD_DATE}\n\nThis post is scheduled 50 days in the future. Make sure this date is correct.`,
           },
         ],
       })
@@ -234,8 +236,8 @@ describe('createReviewForFutureDates', () => {
           {
             id: 456,
             path: 'apps/site/pages/en/blog/test.md',
-            user: { login: 'github-actions[bot]' },
-            body: `**Detected post in future:** ${MOCK_DATE}\n\nThis post is scheduled 100 days in the future. Make sure this date is correct.`,
+            user: { login: BOT_USER_LOGIN },
+            body: `${BOT_PREFIX} ${MOCK_DATE}\n\nThis post is scheduled 100 days in the future. Make sure this date is correct.`,
           },
         ],
       })
@@ -272,8 +274,8 @@ describe('createReviewForFutureDates', () => {
           {
             id: 456,
             path: 'apps/site/pages/en/blog/test.md',
-            user: { login: 'github-actions[bot]' },
-            body: `**Detected post in future:** OLD_DATE\n\nOld content`,
+            user: { login: BOT_USER_LOGIN },
+            body: `${BOT_PREFIX} OLD_DATE\n\nOld content`,
           },
         ],
       })
@@ -607,7 +609,7 @@ describe('createReviewForFutureDates', () => {
             id: 789,
             path: 'apps/site/pages/en/blog/test.md',
             user: { login: 'human-user' },
-            body: '**Detected post in future:** some comment',
+            body: `${BOT_PREFIX} some comment`,
           },
         ],
       })
@@ -655,7 +657,7 @@ describe('createReviewForFutureDates', () => {
           {
             id: 789,
             path: 'apps/site/pages/en/blog/test.md',
-            user: { login: 'github-actions[bot]' },
+            user: { login: BOT_USER_LOGIN },
             body: 'Some other bot comment without the prefix',
           },
         ],
@@ -697,7 +699,7 @@ describe('buildCommentBody', () => {
 
     const result = buildCommentBody(post);
 
-    assert.ok(result.includes('**Detected post in future:**'));
+    assert.ok(result.includes(BOT_PREFIX));
     assert.ok(result.includes('2099-01-15T00:00:00.000Z'));
     assert.ok(result.includes('42 days in the future'));
     assert.ok(result.includes('Make sure this date is correct'));

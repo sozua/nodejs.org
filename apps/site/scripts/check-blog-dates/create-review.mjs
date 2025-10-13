@@ -1,7 +1,7 @@
 // Constants
-const BOT_USER_LOGIN = 'github-actions[bot]';
-const BOT_PREFIX = '**Publish date is in the future:**';
-const DATE_FIELD_MARKER = 'date:';
+export const BOT_USER_LOGIN = 'github-actions[bot]';
+export const BOT_PREFIX = '**Publish date is in the future:**';
+export const DATE_FIELD_MARKER = 'date:';
 
 // ============================================================================
 // EXPORTED UTILITIES

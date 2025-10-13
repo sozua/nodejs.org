@@ -41,13 +41,41 @@ export async function checkBlogDates(
 /**
  * Checks blog dates and formats the results for GitHub Actions output.
  *
+ * This function filters results to only posts that are in the current PR.
+ * If not running in a PR context, no results will be returned.
+ *
  * Note: This function must be run from the apps/site directory.
  *
  * @param {Object} params - GitHub Actions utilities
  * @param {Object} params.core - GitHub Actions core utilities for setting outputs
+ * @param {Object} params.github - GitHub API client (required for PR filtering)
+ * @param {Object} params.context - GitHub Actions context (required for PR filtering)
  */
-export async function checkAndFormatBlogDates({ core }) {
-  const { futurePosts, hasFuturePosts } = await checkBlogDates();
+export async function checkAndFormatBlogDates({ core, github, context }) {
+  if (!github || !context?.payload?.pull_request) {
+    core.info('Not running in a PR context, skipping future date checks');
+    core.setOutput('HAS_FUTURE_POSTS', 'false');
+    return;
+  }
+
+  const { futurePosts: allFuturePosts } = await checkBlogDates();
+
+  // Filter to only posts that are in the PR diff
+  const { data: files } = await github.rest.pulls.listFiles({
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    pull_number: context.payload.pull_request.number,
+  });
+
+  const changedFiles = new Set(files.map(f => f.filename));
+
+  const futurePosts = allFuturePosts.filter(post => {
+    const slug = post.slug.startsWith('/') ? post.slug : `/${post.slug}`;
+    const filePath = `apps/site/pages/en${slug}.md`;
+    return changedFiles.has(filePath);
+  });
+
+  const hasFuturePosts = futurePosts.length > 0;
 
   if (hasFuturePosts) {
     core.setOutput('HAS_FUTURE_POSTS', 'true');

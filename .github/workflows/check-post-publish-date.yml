@@ -58,7 +58,7 @@ jobs:
           script: |
             process.chdir('${{github.workspace}}/apps/site');
             const { checkAndFormatBlogDates } = await import('${{github.workspace}}/apps/site/scripts/check-blog-dates/index.mjs');
-            await checkAndFormatBlogDates({core});
+            await checkAndFormatBlogDates({core, github, context});
 
       - name: Create PR review comments
         if: steps.check-dates.outputs.HAS_FUTURE_POSTS == 'true'
