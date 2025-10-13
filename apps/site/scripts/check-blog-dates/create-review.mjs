@@ -1,6 +1,6 @@
 // Constants
 const BOT_USER_LOGIN = 'github-actions[bot]';
-const BOT_PREFIX = '**Detected post in future:**';
+const BOT_PREFIX = '**Publish date is in the future:**';
 const DATE_FIELD_MARKER = 'date:';
 
 // ============================================================================
@@ -25,7 +25,9 @@ export function buildCommentBody(post) {
 function findDateLinePosition(patch) {
   const lines = patch.split('\n');
   const index = lines.findIndex(line => line.includes(DATE_FIELD_MARKER));
-  if (index === -1) {return -1;}
+  if (index === -1) {
+    return -1;
+  }
   return index + 1;
 }
 
