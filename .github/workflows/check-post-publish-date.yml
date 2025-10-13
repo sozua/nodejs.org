@@ -9,8 +9,6 @@
 name: Check Blog Post Publish Dates
 
 on:
-  branches:
-    - main
   pull_request:
     paths:
       - 'apps/site/pages/en/blog/**/*.md'
