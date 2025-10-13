@@ -56,8 +56,8 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
-            const { checkAndFormatBlogDates } = await import('${{github.workspace}}/apps/site/scripts/check-blog-dates/index.mjs')
-            await checkAndFormatBlogDates({core})
+            const { checkAndFormatBlogDates } = await import('${{github.workspace}}/apps/site/scripts/check-blog-dates/index.mjs');
+            await checkAndFormatBlogDates({core});
 
       - name: Create PR review comments
         if: steps.check-dates.outputs.HAS_FUTURE_POSTS == 'true'
