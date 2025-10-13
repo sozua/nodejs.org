@@ -156,9 +156,11 @@ describe('createReviewForFutureDates', () => {
       core: mockCore,
     });
 
-    assert.equal(mockCore.warning.mock.calls.length, 1);
+    assert.equal(mockCore.info.mock.calls.length, 1);
     assert.ok(
-      mockCore.warning.mock.calls[0].arguments[0].includes('Could not find')
+      mockCore.info.mock.calls[0].arguments[0].includes(
+        'date line not modified'
+      )
     );
   });
 
@@ -517,8 +519,46 @@ describe('createReviewForFutureDates', () => {
       core: mockCore,
     });
 
-    // Should find a date: line (either the removed or added one)
+    // Should find the +date: line (the added one)
     assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 1);
+  });
+
+  it('should skip file when only date line in context (not added)', async () => {
+    process.env.FUTURE_POSTS_JSON = JSON.stringify([
+      {
+        slug: '/blog/test',
+        title: 'Test Post',
+        date: '2099-01-01T00:00:00.000Z',
+        daysInFuture: 100,
+      },
+    ]);
+
+    mockGithub.rest.pulls.listFiles.mock.mockImplementation(() =>
+      Promise.resolve({
+        data: [
+          {
+            filename: 'apps/site/pages/en/blog/test.md',
+            // Date line in context (no + prefix), only content changed
+            patch:
+              '--- a/file\n+++ b/file\n@@ -1,5 +1,5 @@\n date: 2099-01-01\n+content: Some new content',
+          },
+        ],
+      })
+    );
+
+    await createReviewForFutureDates({
+      github: mockGithub,
+      context: mockContext,
+      core: mockCore,
+    });
+
+    // Should NOT create a comment since date wasn't modified (no +date:)
+    assert.equal(mockGithub.rest.pulls.createReview.mock.calls.length, 0);
+    assert.ok(
+      mockCore.info.mock.calls.some(call =>
+        call.arguments[0].includes('date line not modified')
+      )
+    );
   });
 
   it('should handle empty FUTURE_POSTS_JSON array', async () => {

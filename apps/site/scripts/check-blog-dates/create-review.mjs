@@ -21,10 +21,13 @@ export function buildCommentBody(post) {
 
 /**
  * Finds the position of the date field in a git patch (1-indexed).
+ * Only matches lines that were ADDED (start with +) to ensure the date was modified.
  */
 function findDateLinePosition(patch) {
   const lines = patch.split('\n');
-  const index = lines.findIndex(line => line.includes(DATE_FIELD_MARKER));
+  const index = lines.findIndex(
+    line => line.startsWith('+') && line.includes(DATE_FIELD_MARKER)
+  );
   if (index === -1) {
     return -1;
   }
@@ -108,9 +111,7 @@ async function processPost({
   // Find date line position in patch
   const position = findDateLinePosition(file.patch);
   if (position === -1) {
-    core.warning(
-      `Could not find '${DATE_FIELD_MARKER}' line in ${filePath} patch`
-    );
+    core.info(`Skipping ${filePath}: date line not modified in this PR`);
     return null;
   }
 
