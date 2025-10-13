@@ -73,4 +73,42 @@ describe('checkBlogDates', () => {
       assert.ok(post.daysInFuture > 0);
     });
   });
+
+  it('should handle post date exactly equal to current date', async () => {
+    const mockData = {
+      posts: [
+        {
+          slug: '/blog/exact',
+          title: 'Exact',
+          date: '2025-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    const mockGenerator = async () => mockData;
+    const currentDate = new Date('2025-01-01T00:00:00.000Z');
+
+    const result = await checkBlogDates(currentDate, mockGenerator);
+
+    assert.equal(result.hasFuturePosts, false);
+    assert.equal(result.futurePosts.length, 0);
+  });
+
+  it('should handle timezone boundaries correctly', async () => {
+    const mockData = {
+      posts: [
+        {
+          slug: '/blog/tz-test',
+          title: 'TZ Test',
+          date: '2025-01-01T23:59:59.999Z',
+        },
+      ],
+    };
+    const mockGenerator = async () => mockData;
+    const currentDate = new Date('2025-01-01T23:59:59.998Z');
+
+    const result = await checkBlogDates(currentDate, mockGenerator);
+
+    assert.equal(result.hasFuturePosts, true);
+    assert.equal(result.futurePosts.length, 1);
+  });
 });
