@@ -61,7 +61,6 @@ jobs:
             await checkAndFormatBlogDates({core, github, context});
 
       - name: Create PR review comments
-        if: steps.check-dates.outputs.HAS_FUTURE_POSTS == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           FUTURE_POSTS_JSON: ${{ steps.check-dates.outputs.FUTURE_POSTS_JSON }}

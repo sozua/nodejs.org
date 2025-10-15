@@ -60,18 +60,11 @@ export async function checkAndFormatBlogDates({
 }) {
   if (!github || !context?.payload?.pull_request) {
     core.info('Not running in a PR context, skipping future date checks');
-    core.setOutput('HAS_FUTURE_POSTS', 'false');
+    core.setOutput('FUTURE_POSTS_JSON', '[]');
     return;
   }
 
   const { futurePosts } = await blogDataGenerator();
 
-  const hasFuturePosts = futurePosts.length > 0;
-
-  if (hasFuturePosts) {
-    core.setOutput('HAS_FUTURE_POSTS', 'true');
-    core.setOutput('FUTURE_POSTS_JSON', JSON.stringify(futurePosts));
-  } else {
-    core.setOutput('HAS_FUTURE_POSTS', 'false');
-  }
+  core.setOutput('FUTURE_POSTS_JSON', JSON.stringify(futurePosts));
 }

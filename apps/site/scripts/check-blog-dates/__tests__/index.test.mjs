@@ -177,9 +177,9 @@ describe('checkAndFormatBlogDates', () => {
     assert.equal(mockCore.setOutput.mock.calls.length, 1);
     assert.equal(
       mockCore.setOutput.mock.calls[0].arguments[0],
-      'HAS_FUTURE_POSTS'
+      'FUTURE_POSTS_JSON'
     );
-    assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], 'false');
+    assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], '[]');
   });
 
   it('should skip when not in PR context (no context)', async () => {
@@ -199,9 +199,9 @@ describe('checkAndFormatBlogDates', () => {
     assert.equal(mockCore.setOutput.mock.calls.length, 1);
     assert.equal(
       mockCore.setOutput.mock.calls[0].arguments[0],
-      'HAS_FUTURE_POSTS'
+      'FUTURE_POSTS_JSON'
     );
-    assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], 'false');
+    assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], '[]');
   });
 
   it('should skip when not in PR context (no pull_request)', async () => {
@@ -221,12 +221,12 @@ describe('checkAndFormatBlogDates', () => {
     assert.equal(mockCore.setOutput.mock.calls.length, 1);
     assert.equal(
       mockCore.setOutput.mock.calls[0].arguments[0],
-      'HAS_FUTURE_POSTS'
+      'FUTURE_POSTS_JSON'
     );
-    assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], 'false');
+    assert.equal(mockCore.setOutput.mock.calls[0].arguments[1], '[]');
   });
 
-  it('should set HAS_FUTURE_POSTS to false when no future posts exist', async () => {
+  it('should set FUTURE_POSTS_JSON to empty array when no future posts exist', async () => {
     const mockBlogDataGenerator = async () => ({
       futurePosts: [],
       hasFuturePosts: false,
@@ -239,11 +239,11 @@ describe('checkAndFormatBlogDates', () => {
       blogDataGenerator: mockBlogDataGenerator,
     });
 
-    const hasFuturePostsCall = mockCore.setOutput.mock.calls.find(
-      call => call.arguments[0] === 'HAS_FUTURE_POSTS'
+    const jsonCall = mockCore.setOutput.mock.calls.find(
+      call => call.arguments[0] === 'FUTURE_POSTS_JSON'
     );
-    assert.ok(hasFuturePostsCall, 'HAS_FUTURE_POSTS should be set');
-    assert.equal(hasFuturePostsCall.arguments[1], 'false');
+    assert.ok(jsonCall, 'FUTURE_POSTS_JSON should be set');
+    assert.equal(jsonCall.arguments[1], '[]');
   });
 
   it('should set FUTURE_POSTS_JSON when future posts exist', async () => {
@@ -265,12 +265,6 @@ describe('checkAndFormatBlogDates', () => {
       context: mockContext,
       blogDataGenerator: mockBlogDataGenerator,
     });
-
-    const hasFuturePostsCall = mockCore.setOutput.mock.calls.find(
-      call => call.arguments[0] === 'HAS_FUTURE_POSTS'
-    );
-    assert.ok(hasFuturePostsCall, 'HAS_FUTURE_POSTS should be set');
-    assert.equal(hasFuturePostsCall.arguments[1], 'true');
 
     const jsonCall = mockCore.setOutput.mock.calls.find(
       call => call.arguments[0] === 'FUTURE_POSTS_JSON'
