@@ -1,5 +1,5 @@
 ---
-date: '2019-09-06T23:36:16.645Z'
+date: '2026-09-06T23:36:16.645Z'
 category: announcements
 title: Farewell to Node.js v5, Preparing for v7
 layout: blog-post
